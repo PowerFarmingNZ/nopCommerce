@@ -1,6 +1,8 @@
 using System;
+using Microsoft.EntityFrameworkCore;
 using Nop.Core;
 using Nop.Core.Caching;
+using Nop.Core.Infrastructure;
 
 namespace Nop.Data.Extensions
 {
@@ -9,23 +11,6 @@ namespace Nop.Data.Extensions
     /// </summary>
     public static class EntityExtensions
     {
-        /// <summary>
-        /// Check whether an entity is proxy
-        /// </summary>
-        /// <param name="entity">Entity</param>
-        /// <returns>Result</returns>
-        private static bool IsProxy(this BaseEntity entity)
-        {
-            if (entity == null)
-                throw new ArgumentNullException(nameof(entity));
-
-            //in EF 6 we could use ObjectContext.GetObjectType. Now it's not available. Here is a workaround:
-
-            var type = entity.GetType();
-            //e.g. "CustomerProxy" will be derived from "Customer". And "Customer" is derived from BaseEntity
-            return type.BaseType != null && type.BaseType.BaseType != null && type.BaseType.BaseType == typeof(BaseEntity);
-        }
-
         /// <summary>
         /// Get unproxied entity type
         /// </summary>
@@ -42,16 +27,17 @@ namespace Nop.Data.Extensions
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
 
-            Type type = null;
+            Type type;
             //cachable entity (get the base entity type)
             if (entity is IEntityForCaching)
+            {
                 type = ((IEntityForCaching) entity).GetType().BaseType;
-            //EF proxy
-            else if (entity.IsProxy())
-                type = entity.GetType().BaseType;
-            //not proxied entity
+            }
             else
-                type = entity.GetType();
+            {
+                var dbContext = EngineContext.Current.Resolve<IDbContext>() as DbContext;
+                type = dbContext?.Model.FindRuntimeEntityType(entity.GetType()).ClrType;
+            }
 
             if (type == null)
                 throw new Exception("Original entity type cannot be loaded");
